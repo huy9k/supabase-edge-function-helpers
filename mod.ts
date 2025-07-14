@@ -1,5 +1,9 @@
 import "jsr:@supabase/functions-js@2.4.5/edge-runtime.d.ts";
-import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2.51.0";
+import {
+  createClient,
+  SupabaseClient,
+  User,
+} from "jsr:@supabase/supabase-js@2.51.0";
 
 /**
  * --------------------------------------------------------------------
@@ -59,15 +63,16 @@ export const clientPresets = {
    * Asynchronously creates a user Supabase client from a Request object.
    * Extracts the Bearer token from the Authorization header and checks user existence.
    * Throws an error if the header is missing, malformed, or the user does not exist.
+   * Returns a tuple: [client, user].
    * @param req - The incoming Request object
    */
-  user: async (req: Request): Promise<SupabaseClient> => {
+  user: async (req: Request): Promise<[SupabaseClient, User]> => {
     // Get the Authorization header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("Missing Authorization header");
-
-    // Get the token from the Authorization header
     const token = authHeader.replace("Bearer ", "");
+
+    // Create a new Supabase client
     const client = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -77,7 +82,9 @@ export const clientPresets = {
     // Get the user from the Supabase client
     const { data, error } = await client.auth.getUser();
     if (error || !data.user) throw new Error("Invalid or missing user");
-    return client;
+
+    // Return the client and user
+    return [client, data.user];
   },
 
   /**
