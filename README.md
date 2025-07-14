@@ -37,13 +37,13 @@ Deno.serve(async (req) => {
 import { clientPresets } from "jsr:@huy9k/supabase-edge-function-helpers";
 
 // Admin client (service role)
-const admin = clientPresets.admin();
+const adminClient = clientPresets.admin();
 
-// User client (JWT)
-const user = clientPresets.user("<jwt>");
+// User client (from Request, async)
+const userClient = await clientPresets.user(req);
 
 // Anonymous client
-const anon = clientPresets.anon();
+const anonClient = clientPresets.anon();
 ```
 
 ---
@@ -58,7 +58,7 @@ Returns a 204 CORS preflight response if `req.method === "OPTIONS"`, otherwise `
 
 ### `clientPresets`
 - `admin(): SupabaseClient` — Uses `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from env.
-- `user(token: string): SupabaseClient` — Uses `SUPABASE_URL`, `SUPABASE_ANON_KEY` and sets `Authorization: Bearer <token>`.
+- `user(req: Request): Promise<SupabaseClient>` — Extracts Bearer token from the Authorization header, checks user existence, and returns a client if valid. Throws if invalid or missing.
 - `anon(): SupabaseClient` — Uses `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 
 ---
