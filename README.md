@@ -39,8 +39,8 @@ import { clientPresets } from "jsr:@huy9k/supabase-edge-function-helpers";
 // Admin client (service role)
 const adminClient = clientPresets.admin();
 
-// User client (from Request, async, returns [client, user])
-const [userClient, user] = await clientPresets.user(req);
+// User client (from Request)
+const userClient = clientPresets.user(req);
 
 // Anonymous client
 const anonClient = clientPresets.anon();
@@ -58,7 +58,7 @@ Returns a 204 CORS preflight response if `req.method === "OPTIONS"`, otherwise `
 
 ### `clientPresets`
 - `admin(): SupabaseClient` — Uses `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from env.
-- `user(req: Request): Promise<[SupabaseClient, User]>` — Extracts Bearer token from the Authorization header, checks user existence, and returns a tuple `[client, user]` if valid. Throws if invalid or missing. `User` is imported from `@supabase/supabase-js`.
+- `user(req: Request): SupabaseClient` — Extracts Bearer token from the Authorization header, checks user existence, and returns a tuple `[client, user]` if valid. Throws if invalid or missing. `User` is imported from `@supabase/supabase-js`.
 - `anon(): SupabaseClient` — Uses `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 
 ---

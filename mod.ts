@@ -1,9 +1,5 @@
 import "jsr:@supabase/functions-js@2.4.5/edge-runtime.d.ts";
-import {
-  createClient,
-  SupabaseClient,
-  User,
-} from "jsr:@supabase/supabase-js@2.51.0";
+import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2.51.0";
 
 /**
  * --------------------------------------------------------------------
@@ -66,7 +62,7 @@ export const clientPresets = {
    * Returns a tuple: [client, user].
    * @param req - The incoming Request object
    */
-  user: async (req: Request): Promise<[SupabaseClient, User]> => {
+  user: (req: Request): SupabaseClient => {
     // Get the Authorization header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("Missing Authorization header");
@@ -79,12 +75,7 @@ export const clientPresets = {
       { global: { headers: { Authorization: `Bearer ${token}` } } }
     );
 
-    // Get the user from the Supabase client
-    const { data, error } = await client.auth.getUser();
-    if (error || !data.user) throw new Error("Invalid or missing user");
-
-    // Return the client and user
-    return [client, data.user];
+    return client;
   },
 
   /**
