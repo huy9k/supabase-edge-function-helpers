@@ -62,18 +62,23 @@ export const clientPresets = {
    * Returns a tuple: [client, user].
    * @param req - The incoming Request object
    */
-  user: (req: Request, customJWT: string | null = null): SupabaseClient => {
-    // Get the Authorization header
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("Missing Authorization header");
-    const token = authHeader.replace("Bearer ", "");
+  user: (req: Request | string): SupabaseClient => {
+    const token = (() => {
+      if (typeof req === "string") {
+        return req;
+      }
+      // Get the Authorization header
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) throw new Error("Missing Authorization header");
+      return authHeader;
+    })().replace("Bearer ", "");
 
     // Create a new Supabase client
     const client = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       {
-        global: { headers: { Authorization: `Bearer ${customJWT || token}` } },
+        global: { headers: { Authorization: `Bearer ${token}` } },
       },
     );
 
