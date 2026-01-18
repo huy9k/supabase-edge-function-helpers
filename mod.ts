@@ -52,7 +52,7 @@ export const clientPresets = {
   admin: (): SupabaseClient =>
     createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     ),
 
   /**
@@ -62,7 +62,7 @@ export const clientPresets = {
    * Returns a tuple: [client, user].
    * @param req - The incoming Request object
    */
-  user: (req: Request): SupabaseClient => {
+  user: (req: Request, customJWT: string | null = null): SupabaseClient => {
     // Get the Authorization header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("Missing Authorization header");
@@ -72,7 +72,9 @@ export const clientPresets = {
     const client = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: `Bearer ${token}` } } }
+      {
+        global: { headers: { Authorization: `Bearer ${customJWT || token}` } },
+      },
     );
 
     return client;
@@ -84,6 +86,6 @@ export const clientPresets = {
   anon: (): SupabaseClient =>
     createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!
+      Deno.env.get("SUPABASE_ANON_KEY")!,
     ),
 };
