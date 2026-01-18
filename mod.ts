@@ -71,7 +71,16 @@ export const clientPresets = {
       const authHeader = req.headers.get("Authorization");
       if (authHeader) return authHeader;
 
-      const wsHeader = req.headers.get("sec-websocket-protocol");
+      const wsHeader = (() => {
+        const protocol = req.headers.get("sec-websocket-protocol");
+        if (!protocol) return null;
+        const jwtMatch = protocol.match(/^token=(.+)$/);
+        if (!jwtMatch || !jwtMatch[1]) {
+          return null;
+        }
+        return jwtMatch[1];
+      })();
+
       if (wsHeader) return wsHeader;
 
       throw new Error("Missing Authorization header");
