@@ -1,6 +1,6 @@
 {
   "name": "@huy9k/supabase-edge-function-helpers",
-  "version": "4.1.1",
+  "version": "4.1.2",
   "license": "MIT",
   "exports": "./mod.ts"
 }

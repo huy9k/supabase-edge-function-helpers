@@ -69,8 +69,12 @@ export const clientPresets = {
       }
       // Get the Authorization header
       const authHeader = req.headers.get("Authorization");
-      if (!authHeader) throw new Error("Missing Authorization header");
-      return authHeader;
+      if (authHeader) return authHeader;
+
+      const wsHeader = req.headers.get("sec-websocket-protocol");
+      if (wsHeader) return wsHeader;
+
+      throw new Error("Missing Authorization header");
     })().replace("Bearer ", "");
 
     // Create a new Supabase client
