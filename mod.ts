@@ -67,6 +67,11 @@ export const clientPresets = {
       if (typeof req === "string") {
         return req;
       }
+      // Check for 'jwt' query parameter first
+      const url = new URL(req.url);
+      const jwtParam = url.searchParams.get("jwt");
+      if (jwtParam) return jwtParam;
+
       // Get the Authorization header
       const authHeader = req.headers.get("Authorization");
       if (authHeader) return authHeader;
