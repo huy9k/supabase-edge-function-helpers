@@ -1,114 +1,217 @@
-import "jsr:@supabase/functions-js@2.4.5/edge-runtime.d.ts";
-import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2.51.0";
+import type { SupabaseContext } from "npm:@supabase/server@^1";
+import { corsHeaders } from "npm:@supabase/supabase-js@^2/cors";
+import {
+  createAdminClient,
+  createContextClient,
+  verifyCredentials,
+} from "npm:@supabase/server@^1/core";
 
-/**
- * --------------------------------------------------------------------
- *
- *    CORS
- *
- * --------------------------------------------------------------------
- */
+type CorsConfig = boolean | Record<string, string>;
 
-/**
- * CORS headers for Supabase Edge Functions
- */
-export const corsHeaders: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, prefer, x-supabase-auth, x-supabase-client, x-supabase-version",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Max-Age": "86400",
+type WebSocketSupabaseConfig = {
+  auth: "user";
+  cors?: CorsConfig;
+  onHttp?: (req: Request, ctx: SupabaseContext) => Promise<Response>;
+};
+
+export type EdgeStreamSend = (type: string, data: unknown) => void;
+
+type StreamMessageContext<TSession> = {
+  ctx: SupabaseContext;
+  send: EdgeStreamSend;
+  session: TSession;
+};
+
+type WebSocketStreamHandlers<TSession> = {
+  onWarmup: (
+    warmup: unknown,
+    ctx: SupabaseContext,
+  ) => Promise<TSession | null> | TSession | null;
+  onMessage: (
+    action: string,
+    body: Record<string, unknown>,
+    stream: StreamMessageContext<TSession>,
+  ) => Promise<void> | void;
 };
 
 /**
- * Handles CORS preflight requests for Supabase Edge Functions.
- * Returns a 204 response if the request is OPTIONS, otherwise null.
+ * Builds CORS headers from config — mirrors withSupabase defaults.
  */
-export const handleCors = (req: Request): Response | null => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders,
-    });
+function buildCorsHeaders(
+  cors: CorsConfig | undefined,
+): Record<string, string> {
+  if (cors === false) return {};
+  if (typeof cors === "object") return cors;
+  return corsHeaders;
+}
+
+/**
+ * Appends CORS headers to a response — mirrors withSupabase.
+ */
+function addCorsHeaders(
+  response: Response,
+  cors: CorsConfig | undefined,
+): Response {
+  if (cors === false) return response;
+
+  const headers = buildCorsHeaders(cors);
+  const next = new Response(response.body, response);
+  for (const [key, value] of Object.entries(headers)) {
+    next.headers.set(key, value);
   }
-  return null;
-};
+  return next;
+}
 
 /**
- * --------------------------------------------------------------------
- *
- *    SUPABASE Client
- *
- * --------------------------------------------------------------------
+ * Extracts a JWT from Authorization header, ?jwt= query, or WebSocket protocol.
  */
+export function extractWebSocketToken(req: Request): string | null {
+  const authHeader = req.headers.get("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice("Bearer ".length);
+  }
+
+  const url = new URL(req.url);
+  const jwt = url.searchParams.get("jwt");
+  if (jwt) return jwt;
+
+  const protocol = req.headers.get("sec-websocket-protocol");
+  return protocol?.match(/^token=(.+)$/)?.[1] ?? null;
+}
 
 /**
- * Preset Supabase client creators for admin, user, and anon contexts.
+ * Authenticates a request and builds a SupabaseContext without cloning req.
+ * Browsers send JWT via ?jwt= since WebSocket upgrades cannot set Authorization.
  */
-export const clientPresets = {
-  /**
-   * Creates an admin Supabase client using the service role key.
-   */
-  admin: (): SupabaseClient =>
-    createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    ),
+async function createWebSocketSupabaseContext(
+  req: Request,
+  config: WebSocketSupabaseConfig,
+): Promise<SupabaseContext | Response> {
+  const token = extractWebSocketToken(req);
+  const { data: auth, error } = await verifyCredentials(
+    { token, apikey: null },
+    { auth: config.auth },
+  );
 
-  /**
-   * Asynchronously creates a user Supabase client from a Request object.
-   * Extracts the Bearer token from the Authorization header and checks user existence.
-   * Throws an error if the header is missing, malformed, or the user does not exist.
-   * Returns a tuple: [client, user].
-   * @param req - The incoming Request object
-   */
-  user: (req: Request | string): SupabaseClient => {
-    const token = (() => {
-      if (typeof req === "string") {
-        return req;
-      }
-      // Check for 'jwt' query parameter first
-      const url = new URL(req.url);
-      const jwtParam = url.searchParams.get("jwt");
-      if (jwtParam) return jwtParam;
-
-      // Get the Authorization header
-      const authHeader = req.headers.get("Authorization");
-      if (authHeader) return authHeader;
-
-      const wsHeader = (() => {
-        const protocol = req.headers.get("sec-websocket-protocol");
-        if (!protocol) return null;
-        const jwtMatch = protocol.match(/^token=(.+)$/);
-        if (!jwtMatch || !jwtMatch[1]) {
-          return null;
-        }
-        return jwtMatch[1];
-      })();
-
-      if (wsHeader) return wsHeader;
-
-      throw new Error("Missing Authorization header");
-    })().replace("Bearer ", "");
-
-    // Create a new Supabase client
-    const client = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
+  if (error) {
+    return Response.json(
+      { message: error.message, code: error.code },
       {
-        global: { headers: { Authorization: `Bearer ${token}` } },
+        status: error.status,
+        headers: config.cors !== false ? buildCorsHeaders(config.cors) : {},
       },
     );
+  }
 
-    return client;
-  },
+  return {
+    supabase: createContextClient({ auth: { token: auth!.token! } }),
+    supabaseAdmin: createAdminClient(),
+    userClaims: auth!.userClaims,
+    jwtClaims: auth!.jwtClaims ?? null,
+    authMode: auth!.authMode,
+    authKeyName: auth!.keyName ?? undefined,
+  };
+}
 
-  /**
-   * Creates an anonymous Supabase client.
-   */
-  anon: (): SupabaseClient =>
-    createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-    ),
-};
+/**
+ * Wires client_warmup / client_message with a per-socket session gate.
+ */
+function wireEdgeStreamSession<TSession>(
+  socket: WebSocket,
+  ctx: SupabaseContext,
+  handlers: WebSocketStreamHandlers<TSession>,
+): void {
+  let session: TSession | null = null;
+
+  const send: EdgeStreamSend = (type, data) => {
+    if (type === "error") console.error(data);
+    socket.send(JSON.stringify({ type, data }));
+  };
+
+  socket.onmessage = async (e: MessageEvent) => {
+    try {
+      const message = JSON.parse(e.data);
+
+      switch (message.type) {
+        case "client_warmup":
+          send("status", "context");
+          try {
+            const next = await handlers.onWarmup(message.data, ctx);
+            if (next === null) {
+              send("error", "Unauthorized");
+              return;
+            }
+            session = next;
+            send("status", "ready");
+          } catch (error) {
+            send(
+              "error",
+              error instanceof Error ? error.message : "Warmup failed",
+            );
+          }
+          break;
+
+        case "client_message": {
+          if (session === null) {
+            send("error", "Warmup required");
+            return;
+          }
+
+          const body = message.data as Record<string, unknown>;
+          const action = typeof body.action === "string" ? body.action : "";
+          await handlers.onMessage(action, body, { ctx, send, session });
+          break;
+        }
+
+        default:
+          send("error", "Invalid message type");
+          break;
+      }
+    } catch (error) {
+      send(
+        "error",
+        error instanceof Error ? error.message : "Failed to process message",
+      );
+    }
+  };
+
+  socket.onerror = (e: Event) => console.error("ws error", e);
+}
+
+/**
+ * Mirrors withSupabase for WebSocket edge functions.
+ * Handles CORS, auth, context, upgrade, and the edge-stream protocol.
+ */
+export function withWebSocketSupabase<TSession>(
+  config: WebSocketSupabaseConfig,
+  handlers: WebSocketStreamHandlers<TSession>,
+): (req: Request) => Promise<Response> {
+  return async (req: Request) => {
+    if (config.cors !== false && req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: buildCorsHeaders(config.cors),
+      });
+    }
+
+    const ctx = await createWebSocketSupabaseContext(req, config);
+    if (ctx instanceof Response) return ctx;
+
+    const upgrade = req.headers.get("upgrade") || "";
+    if (upgrade.toLowerCase() === "websocket") {
+      const { socket, response } = Deno.upgradeWebSocket(req);
+      wireEdgeStreamSession(socket, ctx, handlers);
+      // Never clone 101 responses — addCorsHeaders breaks the live socket
+      return response;
+    }
+
+    if (config.onHttp) {
+      return addCorsHeaders(await config.onHttp(req, ctx), config.cors);
+    }
+
+    return addCorsHeaders(
+      Response.json({ error: "Not found" }, { status: 404 }),
+      config.cors,
+    );
+  };
+}
