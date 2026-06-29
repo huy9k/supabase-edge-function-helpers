@@ -64,13 +64,14 @@ export default {
 
 Returns a `fetch` handler for `export default { fetch }`.
 
-| Option               | Description                                           |
-| -------------------- | ----------------------------------------------------- |
-| `config.auth`        | `"user"` — JWT verified via `@supabase/server`        |
-| `config.cors`        | `true` (default), `false`, or custom header map       |
-| `config.onHttp`      | Optional HTTP handler for non-WebSocket requests      |
-| `handlers.onWarmup`  | Runs once per socket on `client_warmup`               |
-| `handlers.onMessage` | Runs on `client_message` only after successful warmup |
+| Option                    | Description                                                            |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `config.auth`             | `"user"` — JWT verified via `@supabase/server`                         |
+| `config.cors`             | `true` (default), `false`, or custom header map                        |
+| `config.onHttp`           | Optional HTTP handler for non-WebSocket requests                       |
+| `handlers.onWarmup`       | Runs once per socket on `client_warmup`                                |
+| `handlers.onSessionReady` | Optional — runs after `ready`, with `send` + session (fire-and-forget) |
+| `handlers.onMessage`      | Runs on `client_message` only after successful warmup                  |
 
 ### `onWarmup(warmup, ctx) → TSession | null`
 
@@ -79,6 +80,12 @@ Returns a `fetch` handler for `export default { fetch }`.
 - **Throw** → client receives `error: <message>`.
 
 Use warmup for anything you want to pay once per connection: authorization, DB lookups, cached context for later messages. Authorization is not special — it is just logic inside `onWarmup`.
+
+### `onSessionReady(warmup, { ctx, send, session })` (optional)
+
+Runs **after** `status: ready` is sent, with full stream access. Invoked fire-and-forget — errors are sent as `error` on the socket.
+
+Use for server-driven work on reconnect (e.g. resume an interrupted long-running turn) without requiring a new `client_message`.
 
 ### `onMessage(action, body, { ctx, send, session })`
 

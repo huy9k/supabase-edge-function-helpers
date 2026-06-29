@@ -27,6 +27,11 @@ type WebSocketStreamHandlers<TSession> = {
     warmup: unknown,
     ctx: SupabaseContext,
   ) => Promise<TSession | null> | TSession | null;
+  /** Optional hook after session is ready — use for server-driven resume on reconnect */
+  onSessionReady?: (
+    warmup: unknown,
+    stream: StreamMessageContext<TSession>,
+  ) => Promise<void> | void;
   onMessage: (
     action: string,
     body: Record<string, unknown>,
@@ -143,6 +148,18 @@ function wireEdgeStreamSession<TSession>(
             }
             session = next;
             send("status", "ready");
+            if (handlers.onSessionReady) {
+              void Promise.resolve(
+                handlers.onSessionReady(message.data, { ctx, send, session }),
+              ).catch((error: unknown) => {
+                send(
+                  "error",
+                  error instanceof Error
+                    ? error.message
+                    : "Session ready failed",
+                );
+              });
+            }
           } catch (error) {
             send(
               "error",
