@@ -4,6 +4,8 @@ A thin wrapper for **Supabase Edge Functions** that need WebSocket streaming wit
 
 Designed to pair with clients that speak the **edge-stream protocol** (`client_warmup` → `client_message`, server `status` / `response_text` / `complete` / `error`).
 
+This is intended to be used with [https://www.npmjs.com/package/supabase-edge-function-continuous-stream](https://www.npmjs.com/package/supabase-edge-function-continuous-stream).
+
 > **v5 is a breaking rewrite.** Versions before 5.0.0 exported `clientPresets`, `handleCors`, and manual helpers. v5 exports only `withWebSocketSupabase` and related utilities. See [Migration](#migration-from-v4).
 
 ## Install
