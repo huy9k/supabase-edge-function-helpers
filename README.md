@@ -97,12 +97,28 @@ Use for server-driven work on reconnect (e.g. resume an interrupted long-running
 
 Common server message types:
 
-| `type`          | Typical `data`                          |
-| --------------- | --------------------------------------- |
-| `status`        | `"context"`, `"ready"`, `"thinking"`, … |
-| `response_text` | accumulated reply string                |
-| `complete`      | `{ reply: string, … }`                  |
-| `error`         | error message string                    |
+| `type`               | Typical `data`                         |
+| -------------------- | -------------------------------------- |
+| `status`             | `"context"`, `"ready"` (connection only) |
+| `thinking_paragraph` | new activity paragraph string          |
+| `thinking_delta`     | append to current thinking paragraph   |
+| `thinking_snapshot`  | replace full thinking block (resume)   |
+| `response_text`      | accumulated reply string               |
+| `complete`           | `{ reply: string, … }`                 |
+| `error`              | error message string                   |
+
+### `createThinkingStream(send)`
+
+Helper for live agent activity UI — pairs with `reduceThinking` in `supabase-edge-function-continuous-stream`:
+
+```ts
+import { createThinkingStream } from "supabase-edge-function-helpers";
+
+const thinking = createThinkingStream(send);
+thinking.paragraph("Thinking…");
+thinking.delta("reasoning chunk");
+thinking.snapshot(partialThoughts); // resume
+```
 
 ### `extractWebSocketToken(req) → string | null`
 
@@ -134,6 +150,9 @@ type EdgeStreamSend = (type: string, data: unknown) => void;
 ```json
 { "type": "status", "data": "context" }
 { "type": "status", "data": "ready" }
+{ "type": "thinking_paragraph", "data": "Editing file…" }
+{ "type": "thinking_delta", "data": "reasoning chunk" }
+{ "type": "thinking_snapshot", "data": "full block on resume" }
 { "type": "response_text", "data": "…" }
 { "type": "complete", "data": { "reply": "…" } }
 { "type": "error", "data": "…" }

@@ -16,6 +16,28 @@ type WebSocketSupabaseConfig = {
 
 export type EdgeStreamSend = (type: string, data: unknown) => void;
 
+/** Paragraph-based thinking events for live agent activity UI */
+export type ThinkingStream = {
+  paragraph: (text?: string) => void;
+  delta: (text: string) => void;
+  snapshot: (text: string) => void;
+};
+
+/** Emits paragraph-based thinking events for live agent activity UI */
+export function createThinkingStream(send: EdgeStreamSend): ThinkingStream {
+  return {
+    paragraph(text = "") {
+      send("thinking_paragraph", text);
+    },
+    delta(text: string) {
+      send("thinking_delta", text);
+    },
+    snapshot(text: string) {
+      send("thinking_snapshot", text);
+    },
+  };
+}
+
 type StreamMessageContext<TSession> = {
   ctx: SupabaseContext;
   send: EdgeStreamSend;
