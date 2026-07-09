@@ -59,6 +59,12 @@ type WebSocketStreamHandlers<TSession> = {
     body: Record<string, unknown>,
     stream: StreamMessageContext<TSession>,
   ) => Promise<void> | void;
+  /** Optional side channel during an in-flight client_message (e.g. stop / cancel) */
+  onControl?: (
+    action: string,
+    body: Record<string, unknown>,
+    stream: StreamMessageContext<TSession>,
+  ) => Promise<void> | void;
 };
 
 /**
@@ -141,7 +147,7 @@ async function createWebSocketSupabaseContext(
 }
 
 /**
- * Wires client_warmup / client_message with a per-socket session gate.
+ * Wires client_warmup / client_message / client_control with a per-socket session gate.
  */
 function wireEdgeStreamSession<TSession>(
   socket: WebSocket,
@@ -199,6 +205,23 @@ function wireEdgeStreamSession<TSession>(
           const body = message.data as Record<string, unknown>;
           const action = typeof body.action === "string" ? body.action : "";
           await handlers.onMessage(action, body, { ctx, send, session });
+          break;
+        }
+
+        case "client_control": {
+          if (session === null) {
+            send("error", "Warmup required");
+            return;
+          }
+
+          if (!handlers.onControl) {
+            send("error", "Control not supported");
+            return;
+          }
+
+          const body = message.data as Record<string, unknown>;
+          const action = typeof body.action === "string" ? body.action : "";
+          await handlers.onControl(action, body, { ctx, send, session });
           break;
         }
 

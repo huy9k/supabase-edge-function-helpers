@@ -74,6 +74,7 @@ Returns a `fetch` handler for `export default { fetch }`.
 | `handlers.onWarmup`       | Runs once per socket on `client_warmup`                                |
 | `handlers.onSessionReady` | Optional — runs after `ready`, with `send` + session (fire-and-forget) |
 | `handlers.onMessage`      | Runs on `client_message` only after successful warmup                  |
+| `handlers.onControl`      | Optional — runs on `client_control` during an in-flight stream         |
 
 ### `onWarmup(warmup, ctx) → TSession | null`
 
@@ -95,17 +96,21 @@ Use for server-driven work on reconnect (e.g. resume an interrupted long-running
 - `session` — cached result from `onWarmup` (guaranteed non-null).
 - `send(type, data)` — emits `{ type, data }` JSON on the socket.
 
+### `onControl(action, body, { ctx, send, session })` (optional)
+
+Side channel for control messages sent while a `client_message` stream is in flight (e.g. stop / cancel). Same `action` / `session` shape as `onMessage`. If omitted, `client_control` receives `error: Control not supported`.
+
 Common server message types:
 
-| `type`               | Typical `data`                         |
-| -------------------- | -------------------------------------- |
+| `type`               | Typical `data`                           |
+| -------------------- | ---------------------------------------- |
 | `status`             | `"context"`, `"ready"` (connection only) |
-| `thinking_paragraph` | new activity paragraph string          |
-| `thinking_delta`     | append to current thinking paragraph   |
-| `thinking_snapshot`  | replace full thinking block (resume)   |
-| `response_text`      | accumulated reply string               |
-| `complete`           | `{ reply: string, … }`                 |
-| `error`              | error message string                   |
+| `thinking_paragraph` | new activity paragraph string            |
+| `thinking_delta`     | append to current thinking paragraph     |
+| `thinking_snapshot`  | replace full thinking block (resume)     |
+| `response_text`      | accumulated reply string                 |
+| `complete`           | `{ reply: string, … }`                   |
+| `error`              | error message string                     |
 
 ### `createThinkingStream(send)`
 
@@ -143,6 +148,7 @@ type EdgeStreamSend = (type: string, data: unknown) => void;
 ```json
 { "type": "client_warmup", "data": { … } }
 { "type": "client_message", "data": { "action": "…", … } }
+{ "type": "client_control", "data": { "action": "…", … } }
 ```
 
 **Server → client**
@@ -161,6 +167,8 @@ type EdgeStreamSend = (type: string, data: unknown) => void;
 **Gate rules**
 
 - `client_message` without a successful warmup → `Warmup required`
+- `client_control` without a successful warmup → `Warmup required`
+- `client_control` without `onControl` handler → `Control not supported`
 - `onWarmup` returns `null` → `Unauthorized`
 
 ## HTTP + WebSocket in one function
