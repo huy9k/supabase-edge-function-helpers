@@ -146,6 +146,24 @@ async function createWebSocketSupabaseContext(
   };
 }
 
+/** Reads optional top-level requestId from an inbound client envelope */
+function readRequestId(message: { requestId?: unknown }): string | undefined {
+  return typeof message.requestId === "string" ? message.requestId : undefined;
+}
+
+/** Builds a send that echoes requestId when the client provided one */
+function bindScopedSend(
+  socket: WebSocket,
+  requestId: string | undefined,
+): EdgeStreamSend {
+  return (type, data) => {
+    if (type === "error") console.error(data);
+    socket.send(
+      JSON.stringify(requestId ? { type, data, requestId } : { type, data }),
+    );
+  };
+}
+
 /**
  * Wires client_warmup / client_message / client_control with a per-socket session gate.
  */
@@ -156,10 +174,8 @@ function wireEdgeStreamSession<TSession>(
 ): void {
   let session: TSession | null = null;
 
-  const send: EdgeStreamSend = (type, data) => {
-    if (type === "error") console.error(data);
-    socket.send(JSON.stringify({ type, data }));
-  };
+  // Unscoped send for warmup / onSessionReady (no requestId)
+  const send: EdgeStreamSend = bindScopedSend(socket, undefined);
 
   socket.onmessage = async (e: MessageEvent) => {
     try {
@@ -197,31 +213,41 @@ function wireEdgeStreamSession<TSession>(
           break;
 
         case "client_message": {
+          const scopedSend = bindScopedSend(socket, readRequestId(message));
           if (session === null) {
-            send("error", "Warmup required");
+            scopedSend("error", "Warmup required");
             return;
           }
 
           const body = message.data as Record<string, unknown>;
           const action = typeof body.action === "string" ? body.action : "";
-          await handlers.onMessage(action, body, { ctx, send, session });
+          await handlers.onMessage(action, body, {
+            ctx,
+            send: scopedSend,
+            session,
+          });
           break;
         }
 
         case "client_control": {
+          const scopedSend = bindScopedSend(socket, readRequestId(message));
           if (session === null) {
-            send("error", "Warmup required");
+            scopedSend("error", "Warmup required");
             return;
           }
 
           if (!handlers.onControl) {
-            send("error", "Control not supported");
+            scopedSend("error", "Control not supported");
             return;
           }
 
           const body = message.data as Record<string, unknown>;
           const action = typeof body.action === "string" ? body.action : "";
-          await handlers.onControl(action, body, { ctx, send, session });
+          await handlers.onControl(action, body, {
+            ctx,
+            send: scopedSend,
+            session,
+          });
           break;
         }
 
