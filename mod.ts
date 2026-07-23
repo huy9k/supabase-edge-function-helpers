@@ -266,6 +266,24 @@ function wireEdgeStreamSession<TSession>(
   socket.onerror = (e: Event) => console.error("ws error", e);
 }
 
+/** Deno global exposed only inside the Supabase edge runtime */
+declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
+
+/**
+ * Prevents the platform supervisor from retiring this worker as "idle"
+ * (EarlyDrop) once the 101 upgrade response is returned. Without this, a
+ * long-running turn can get its socket killed mid-step at any point — not
+ * just at the wall-clock limit — because the supervisor sees no outstanding
+ * request/promise it's tracking. See:
+ * https://supabase.com/docs/guides/troubleshooting/edge-functions-worker-timeouts-and-websocket-drops
+ */
+function keepWorkerAliveUntilSocketCloses(socket: WebSocket): void {
+  const closed = new Promise<void>((resolve) => {
+    socket.addEventListener("close", () => resolve());
+  });
+  EdgeRuntime.waitUntil(closed);
+}
+
 /**
  * Mirrors withSupabase for WebSocket edge functions.
  * Handles CORS, auth, context, upgrade, and the edge-stream protocol.
@@ -287,8 +305,13 @@ export function withWebSocketSupabase<TSession>(
 
     const upgrade = req.headers.get("upgrade") || "";
     if (upgrade.toLowerCase() === "websocket") {
-      const { socket, response } = Deno.upgradeWebSocket(req);
+      // idleTimeout: 0 disables the platform's own socket-level idle close —
+      // long silent AI steps must not get the connection reaped mid-turn.
+      const { socket, response } = Deno.upgradeWebSocket(req, {
+        idleTimeout: 0,
+      });
       wireEdgeStreamSession(socket, ctx, handlers);
+      keepWorkerAliveUntilSocketCloses(socket);
       // Never clone 101 responses — addCorsHeaders breaks the live socket
       return response;
     }
